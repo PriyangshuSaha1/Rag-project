@@ -149,9 +149,11 @@ Ask me anything --> What is Node.js?
 
 ## 👨‍💻 Author
 
-Your Name
-GitHub: https://PriyangshuSaha1
+**Priyangshu Saha**  
+💻 Aspiring AI/ML Engineer  
 
+🔗 GitHub: https://github.com/PriyangshuSaha1  
+🔗 LinkedIn: [https://linkedin.com/in/your-link](https://www.linkedin.com/in/priyangshusaha)
 ---
 
 ## ⭐ If you like this project
