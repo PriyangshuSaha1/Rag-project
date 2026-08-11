@@ -1,161 +1,48 @@
-# 📚 RAG Project using LangChain, Gemini & Pinecone
+# RAG-based Document QA System
 
-This project implements a **Retrieval-Augmented Generation (RAG)** system using:
+A Retrieval-Augmented Generation (RAG) system built with **Python, Gemini LLM, LangChain, and Pinecone**. This application allows users to upload PDF documents, processes them into semantic vector embeddings, and provides an interactive chat interface to answer questions based strictly on the uploaded context.
 
-* 🧠 Google Gemini (LLM + Embeddings)
-* 📄 PDF document processing
-* ✂️ Text chunking
-* 📦 Pinecone vector database
-* 🔗 LangChain for orchestration
+## Features
+- **PDF Processing**: Seamlessly upload and chunk large PDF documents using `RecursiveCharacterTextSplitter`.
+- **Vector Embeddings**: Generates highly accurate semantic embeddings using Google's `gemini-embedding-001`.
+- **Vector Database**: Stores and retrieves embeddings instantly using `Pinecone` for sub-second query latency.
+- **Conversational AI**: Uses Google's `gemini-2.5-flash` model to answer queries based on the top semantic matches, reducing hallucinations.
+- **Interactive UI**: Built with `Streamlit` for a clean, responsive, and easy-to-use web interface.
 
----
+## Tech Stack
+- **Language**: Python
+- **LLM / GenAI**: Google Gemini (Flash & Embeddings)
+- **Framework**: LangChain, Streamlit
+- **Vector Database**: Pinecone
 
-## 🚀 Features
+## Installation & Setup
 
-* Load and process PDF documents
-* Split documents into chunks
-* Convert text into embeddings
-* Store embeddings in Pinecone
-* Perform semantic search
-* Answer user queries based on document context
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/PriyangshuSaha1/Rag-project.git
+   cd Rag-project
+   ```
 
----
+2. **Install Dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-## 📁 Project Structure
+3. **Set up Environment Variables**:
+   Create a `.env` file in the root directory and add your API keys (or you can input them directly via the Streamlit UI):
+   ```env
+   GEMINI_API_KEY=your_google_gemini_api_key
+   PINECONE_API_KEY=your_pinecone_api_key
+   PINECONE_INDEX_NAME=your_pinecone_index_name
+   ```
 
-```
-DAY12/
-│── index.js        # Indexing phase (PDF → embeddings → Pinecone)
-│── query.js        # Query + chat system
-│── NODE.pdf        # Source document
-│── package.json
-│── .env            # API keys (not uploaded)
-│── .gitignore
-```
+4. **Run the Application**:
+   ```bash
+   streamlit run app.py
+   ```
 
----
-
-## ⚙️ Setup Instructions
-
-### 1️⃣ Clone the repository
-
-```bash
-git clone https://github.com/YOUR_USERNAME/rag-project.git
-cd rag-project
-```
-
----
-
-### 2️⃣ Install dependencies
-
-```bash
-npm install
-```
-
----
-
-### 3️⃣ Create `.env` file
-
-```env
-GEMINI_API_KEY=your_gemini_api_key
-PINECONE_API_KEY=your_pinecone_api_key
-PINECONE_INDEX_NAME=your_index_name
-```
-
----
-
-### 4️⃣ Run Indexing (store data in Pinecone)
-
-```bash
-node index.js
-```
-
-👉 This will:
-
-* Load PDF
-* Create chunks
-* Generate embeddings
-* Store vectors in Pinecone
-
----
-
-### 5️⃣ Run Query System
-
-```bash
-node query.js
-```
-
-👉 Then ask questions like:
-
-```
-Ask me anything --> What is Node.js?
-```
-
----
-
-## 🧠 How It Works
-
-### 🔹 Indexing Phase
-
-1. Load PDF using `PDFLoader`
-2. Split text into chunks
-3. Convert chunks into embeddings (Gemini)
-4. Store vectors in Pinecone
-
----
-
-### 🔹 Query Phase
-
-1. User inputs a question
-2. Convert question → embedding
-3. Search similar vectors in Pinecone
-4. Retrieve top matches (context)
-5. Send context + question to Gemini
-6. Generate final answer
-
----
-
-## 📦 Tech Stack
-
-* **LangChain**
-* **Google Generative AI (Gemini)**
-* **Pinecone**
-* **Node.js**
-
----
-
-## ⚠️ Important Notes
-
-* ❌ Do NOT upload:
-
-  * `node_modules/`
-  * `.env`
-* ✅ Always include:
-
-  * `package.json`
-  * source code
-
----
-
-## 💡 Future Improvements
-
-* Add UI (React / Next.js)
-* Streaming responses
-* Multi-document support
-* Better prompt engineering
-* Intent detection model
-
----
-
-## 👨‍💻 Author
-
-**Priyangshu Saha**  
-💻 Aspiring AI/ML Engineer  
-
-🔗 GitHub: https://github.com/PriyangshuSaha1  
-🔗 LinkedIn: [https://linkedin.com/in/your-link](https://www.linkedin.com/in/priyangshusaha)
----
-
-## ⭐ If you like this project
-
-Give it a star ⭐ on GitHub!
+## Usage
+1. Open the app in your browser (usually `http://localhost:8501`).
+2. Provide your API keys in the sidebar (if not using a `.env` file).
+3. Upload a PDF document and click **"Process & Index Document"**.
+4. Ask questions in the chat interface! The system will retrieve the top 5 most relevant chunks from the document and use the Gemini LLM to construct an accurate answer.
