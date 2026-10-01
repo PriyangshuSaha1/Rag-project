@@ -19,6 +19,7 @@ load_dotenv()
 
 st.set_page_config(page_title="RAG Intelligence", page_icon="🧠", layout="wide")
 
+# Hide the running indicator and dimming effect to make it feel more instantaneous
 st.markdown("""
 <style>
     .stApp { background-color: #0e1117; }
@@ -26,6 +27,7 @@ st.markdown("""
     .main-title { font-family: 'Inter', sans-serif; color: #ffffff; font-size: 2.5rem; font-weight: 700; margin-bottom: 0px; }
     .sub-title { color: #a0aec0; font-size: 1.1rem; margin-bottom: 30px; }
     #MainMenu {visibility: hidden;} footer {visibility: hidden;}
+    [data-testid="stStatusWidget"] {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -34,6 +36,17 @@ st.markdown('<p class="sub-title">Securely query your documents using Local Embe
 
 if "messages" not in st.session_state:
     st.session_state.messages = [{"role": "assistant", "content": "Hello! I am ready to answer questions based on your indexed documents. What would you like to know?"}]
+
+@st.cache_resource(show_spinner=False)
+def get_embeddings():
+    return HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
+
+@st.cache_resource(show_spinner=False)
+def get_llm(provider, api_key):
+    if provider == "Google Gemini":
+        return ChatGoogleGenerativeAI(model="gemini-pro", google_api_key=api_key, temperature=0.3)
+    else:
+        return ChatGroq(model="llama3-8b-8192", groq_api_key=api_key, temperature=0.3)
 
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/4233/4233830.png", width=60)
@@ -44,10 +57,8 @@ with st.sidebar:
         
         if llm_provider == "Google Gemini":
             api_key = st.text_input("Gemini API Key", type="password", value=os.getenv("GEMINI_API_KEY", ""))
-            model_name = "gemini-pro"
         else:
             api_key = st.text_input("Groq API Key", type="password", value=os.getenv("GROQ_API_KEY", ""))
-            model_name = "llama3-8b-8192"
             
         pinecone_api_key = st.text_input("Pinecone API Key", type="password", value=os.getenv("PINECONE_API_KEY", ""))
         pinecone_index   = st.text_input("Pinecone Index Name", value=os.getenv("PINECONE_INDEX_NAME", ""))
@@ -66,7 +77,7 @@ with st.sidebar:
                     os.environ["PINECONE_API_KEY"] = pinecone_api_key
                     
                     st.write("⏳ Downloading / Loading local AI embeddings...")
-                    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
+                    embeddings = get_embeddings()
                     st.write("✅ Embeddings loaded successfully!")
                     
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
@@ -104,15 +115,13 @@ if not (api_key and pinecone_api_key and pinecone_index):
 os.environ["PINECONE_API_KEY"] = pinecone_api_key
 
 try:
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
-    if llm_provider == "Google Gemini":
-        llm = ChatGoogleGenerativeAI(model=model_name, google_api_key=api_key, temperature=0.3)
-    else:
-        llm = ChatGroq(model=model_name, groq_api_key=api_key, temperature=0.3)
+    embeddings = get_embeddings()
+    llm = get_llm(llm_provider, api_key)
 except Exception as e:
     st.error(f"Error initializing models: {e}")
     st.stop()
 
+# Print history quickly
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
@@ -122,11 +131,14 @@ for msg in st.session_state.messages:
                     st.markdown(f"**Chunk {i+1} (Page {doc.metadata.get('page', '?')})**")
                     st.info(doc.page_content)
 
+# Handle new user input
 if prompt_text := st.chat_input("Ask a question about your documents..."):
+    # Render user question immediately
     st.session_state.messages.append({"role": "user", "content": prompt_text})
     with st.chat_message("user"):
         st.markdown(prompt_text)
 
+    # Render assistant response with spinner
     with st.chat_message("assistant"):
         with st.spinner(f"Analyzing with {llm_provider}..."):
             try:
@@ -177,4 +189,3 @@ Answer:""")
                 error_msg = f"An error occurred: {e}"
                 st.error(error_msg)
                 st.session_state.messages.append({"role": "assistant", "content": error_msg})
-
