@@ -1,4 +1,4 @@
-import streamlit as st
+﻿import streamlit as st
 import os
 import tempfile
 from typing import List, Optional, Any
@@ -10,132 +10,112 @@ from langchain_pinecone import PineconeVectorStore
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.embeddings import Embeddings
-from langchain_core.language_models.llms import LLM
-from langchain_core.callbacks.manager import CallbackManagerForLLMRun
-from google import genai
+
+# Use LangChain integrations
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_huggingface import HuggingFaceEmbeddings
 
 load_dotenv()
 
-# ─── Custom Embeddings (google-genai SDK) ──────────────────────────────────────
-class GeminiEmbeddings(Embeddings):
-    def __init__(self, api_key: str, model: str = "gemini-embedding-001", output_dimensionality: int = 768):
-        self.client = genai.Client(api_key=api_key)
-        self.model = model
-        self.output_dimensionality = output_dimensionality
+st.set_page_config(page_title="RAG Intelligence", page_icon="🧠", layout="wide")
 
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        result = []
-        for text in texts:
-            r = self.client.models.embed_content(
-                model=self.model,
-                contents=text,
-                config={"output_dimensionality": self.output_dimensionality}
-            )
-            result.append(r.embeddings[0].values)
-        return result
+st.markdown("""
+<style>
+    .stApp { background-color: #0e1117; }
+    .stChatMessage { border-radius: 10px; padding: 10px; margin-bottom: 10px; }
+    .main-title { font-family: 'Inter', sans-serif; color: #ffffff; font-size: 2.5rem; font-weight: 700; margin-bottom: 0px; }
+    .sub-title { color: #a0aec0; font-size: 1.1rem; margin-bottom: 30px; }
+    #MainMenu {visibility: hidden;} footer {visibility: hidden;}
+</style>
+""", unsafe_allow_html=True)
 
-    def embed_query(self, text: str) -> List[float]:
-        r = self.client.models.embed_content(
-            model=self.model,
-            contents=text,
-            config={"output_dimensionality": self.output_dimensionality}
-        )
-        return r.embeddings[0].values
+st.markdown('<p class="main-title">🧠 RAG Intelligence Studio</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-title">Securely query your documents using Local Embeddings, Pinecone & Google Gemini AI</p>', unsafe_allow_html=True)
 
+if "messages" not in st.session_state:
+    st.session_state.messages = [{"role": "assistant", "content": "Hello! I am ready to answer questions based on your indexed documents. What would you like to know?"}]
 
-# ─── Custom LLM (new Interactions API) ────────────────────────────────────────
-class GeminiLLM(LLM):
-    api_key: str
-    model: str = "gemini-3.6-flash"
-    temperature: float = 0.3
+with st.sidebar:
+    st.image("https://cdn-icons-png.flaticon.com/512/4233/4233830.png", width=60)
+    st.header("⚙️ Configuration")
+    
+    with st.expander("🔑 API Credentials", expanded=True):
+        gemini_api_key   = st.text_input("Gemini API Key", type="password", value=os.getenv("GEMINI_API_KEY", ""))
+        pinecone_api_key = st.text_input("Pinecone API Key", type="password", value=os.getenv("PINECONE_API_KEY", ""))
+        pinecone_index   = st.text_input("Pinecone Index Name", value=os.getenv("PINECONE_INDEX_NAME", ""))
 
-    @property
-    def _llm_type(self) -> str:
-        return "gemini"
+    st.divider()
+    st.header("📄 Knowledge Base")
+    uploaded_file = st.file_uploader("Upload PDF Document", type=["pdf"])
 
-    def _call(self, prompt: str, stop: Optional[List[str]] = None,
-              run_manager: Optional[CallbackManagerForLLMRun] = None, **kwargs: Any) -> str:
-        client = genai.Client(api_key=self.api_key)
-        # Use the new Interactions API as recommended by Google
-        response = client.interactions.create(
-            model=self.model,
-            input=prompt
-        )
-        # Extract text from ModelOutputStep inside steps
-        for step in (response.steps or []):
-            if hasattr(step, 'content') and step.content:
-                for content in step.content:
-                    if hasattr(content, 'text') and content.text:
-                        return content.text
-        return ""
+    if st.button("🚀 Process & Index Document", use_container_width=True):
+        if not (gemini_api_key and pinecone_api_key and pinecone_index):
+            st.error("Please provide all credentials above.")
+        elif uploaded_file is not None:
+            with st.spinner("Downloading local embeddings (this takes a moment the first time)..."):
+                try:
+                    os.environ["PINECONE_API_KEY"] = pinecone_api_key
+                    
+                    # USE LOCAL HUGGINGFACE EMBEDDINGS (Dimensions: 768 to match Pinecone)
+                    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
+                    
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+                        tmp_file.write(uploaded_file.getvalue())
+                        tmp_path = tmp_file.name
 
+                    loader = PyPDFLoader(tmp_path)
+                    docs = loader.load()
 
-# ─── Streamlit UI ──────────────────────────────────────────────────────────────
-st.set_page_config(page_title="RAG Document QA System", layout="wide")
-st.title("📄 RAG-based Document QA System")
-st.markdown("Built with **Python, Gemini LLM, LangChain, and Pinecone**")
-
-st.sidebar.header("⚙️ Configuration")
-gemini_api_key   = st.sidebar.text_input("Gemini API Key", type="password", value=os.getenv("GEMINI_API_KEY", ""))
-pinecone_api_key = st.sidebar.text_input("Pinecone API Key", type="password", value=os.getenv("PINECONE_API_KEY", ""))
-pinecone_index   = st.sidebar.text_input("Pinecone Index Name", value=os.getenv("PINECONE_INDEX_NAME", ""))
+                    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+                    splits = splitter.split_documents(docs)
+                    
+                    PineconeVectorStore.from_documents(splits, embeddings, index_name=pinecone_index)
+                    os.remove(tmp_path)
+                    
+                    st.success(f"✅ Indexed {len(splits)} chunks successfully!")
+                except Exception as e:
+                    st.error(f"Error: {e}")
+        else:
+            st.warning("Please upload a PDF first.")
+            
+    if st.button("🗑️ Clear Chat History", use_container_width=True):
+        st.session_state.messages = [{"role": "assistant", "content": "History cleared. How can I help?"}]
 
 if not (gemini_api_key and pinecone_api_key and pinecone_index):
-    st.warning("⚠️ Please provide all three credentials in the sidebar to proceed.")
+    st.info("👈 Please enter your API credentials in the sidebar to start chatting.")
     st.stop()
 
 os.environ["PINECONE_API_KEY"] = pinecone_api_key
 
 try:
-    embeddings = GeminiEmbeddings(api_key=gemini_api_key, model="gemini-embedding-001", output_dimensionality=768)
-    llm = GeminiLLM(api_key=gemini_api_key, model="gemini-3.6-flash", temperature=0.3)
+    # USE LOCAL EMBEDDINGS
+    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
+    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=gemini_api_key, temperature=0.3)
 except Exception as e:
     st.error(f"Error initializing models: {e}")
     st.stop()
 
-# ─── Document Upload & Indexing ────────────────────────────────────────────────
-st.sidebar.header("📁 Document Upload")
-uploaded_file = st.sidebar.file_uploader("Upload a PDF document to index", type=["pdf"])
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
+        if "sources" in msg:
+            with st.expander("📑 View Source Context"):
+                for i, doc in enumerate(msg["sources"]):
+                    st.markdown(f"**Chunk {i+1} (Page {doc.metadata.get('page', '?')})**")
+                    st.info(doc.page_content)
 
-if st.sidebar.button("Process & Index Document"):
-    if uploaded_file is not None:
-        with st.spinner("Processing and chunking document..."):
-            try:
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-                    tmp_file.write(uploaded_file.getvalue())
-                    tmp_path = tmp_file.name
+if prompt_text := st.chat_input("Ask a question about your documents..."):
+    st.session_state.messages.append({"role": "user", "content": prompt_text})
+    with st.chat_message("user"):
+        st.markdown(prompt_text)
 
-                loader = PyPDFLoader(tmp_path)
-                docs = loader.load()
-
-                splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-                splits = splitter.split_documents(docs)
-
-                st.sidebar.info(f"✂️ Created {len(splits)} chunks. Uploading to Pinecone...")
-
-                PineconeVectorStore.from_documents(splits, embeddings, index_name=pinecone_index)
-
-                os.remove(tmp_path)
-                st.sidebar.success("✅ Document indexed in Pinecone successfully!")
-
-            except Exception as e:
-                st.sidebar.error(f"An error occurred: {e}")
-    else:
-        st.sidebar.error("Please upload a PDF first.")
-
-# ─── Chat / QA Interface ───────────────────────────────────────────────────────
-st.header("💬 Ask Questions")
-user_question = st.text_input("Enter your question based on the indexed document:")
-
-if st.button("Get Answer"):
-    if user_question:
-        with st.spinner("Searching vector database and generating answer..."):
+    with st.chat_message("assistant"):
+        with st.spinner("Searching knowledge base..."):
             try:
                 vectorstore = PineconeVectorStore(index_name=pinecone_index, embedding=embeddings)
-                retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
+                retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
 
-                prompt = ChatPromptTemplate.from_template("""
+                prompt_template = ChatPromptTemplate.from_template("""
 You are a helpful AI assistant answering questions based on the provided documentation.
 
 Context from the documentation:
@@ -145,8 +125,8 @@ Question: {question}
 
 Instructions:
 - Answer using ONLY the information from the context above.
-- If the answer is not in the context, say "I don't have enough information in the provided document to answer that."
-- Be concise, clear, and use bullet points if appropriate.
+- If the answer is not in the context, clearly state that you don't have enough information.
+- Use Markdown formatting for readability.
 
 Answer:""")
 
@@ -155,23 +135,27 @@ Answer:""")
 
                 rag_chain = (
                     {"context": retriever | format_docs, "question": RunnablePassthrough()}
-                    | prompt
+                    | prompt_template
                     | llm
                     | StrOutputParser()
                 )
 
-                answer = rag_chain.invoke(user_question)
-
-                st.subheader("✅ Answer:")
-                st.success(answer)
-
-                with st.expander("🔍 View Source Document Chunks"):
-                    source_docs = retriever.invoke(user_question)
+                answer = rag_chain.invoke(prompt_text)
+                source_docs = retriever.invoke(prompt_text)
+                
+                st.markdown(answer)
+                with st.expander("📑 View Source Context"):
                     for i, doc in enumerate(source_docs):
-                        st.write(f"**Chunk {i+1} (Page {doc.metadata.get('page', 'Unknown')}):**")
+                        st.markdown(f"**Chunk {i+1} (Page {doc.metadata.get('page', '?')})**")
                         st.info(doc.page_content)
+                        
+                st.session_state.messages.append({
+                    "role": "assistant", 
+                    "content": answer,
+                    "sources": source_docs
+                })
 
             except Exception as e:
-                st.error(f"An error occurred during retrieval: {e}")
-    else:
-        st.warning("Please enter a question.")
+                error_msg = f"An error occurred: {e}"
+                st.error(error_msg)
+                st.session_state.messages.append({"role": "assistant", "content": error_msg})
