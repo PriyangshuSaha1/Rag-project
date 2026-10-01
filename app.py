@@ -69,7 +69,7 @@ def get_llm(provider, api_key):
         except Exception as e:
             raise Exception(f"Google API Key verification failed: {e}")
     else:
-        return ChatGroq(model="llama3-8b-8192", groq_api_key=api_key, temperature=0.3), "llama3-8b-8192"
+        return ChatGroq(model="llama-3.1-8b-instant", groq_api_key=api_key, temperature=0.3), "llama-3.1-8b-instant"
 
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/4233/4233830.png", width=60)
@@ -206,4 +206,5 @@ Answer:""")
                 error_msg = f"An error occurred: {e}"
                 st.error(error_msg)
                 st.session_state.messages.append({"role": "assistant", "content": error_msg})
+
 
