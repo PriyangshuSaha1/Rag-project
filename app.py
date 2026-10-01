@@ -15,7 +15,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_groq import ChatGroq
 from langchain_huggingface import HuggingFaceEmbeddings
 
-import google.generativeai as genai
+from google import genai
 
 load_dotenv()
 
@@ -69,8 +69,8 @@ with st.sidebar:
             if st.button("🛠️ Debug: List My Allowed Models"):
                 if api_key:
                     try:
-                        genai.configure(api_key=api_key)
-                        models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                        client = genai.Client(api_key=api_key)
+                        models = [m.name for m in client.models.list()]
                         st.success(f"Your API Key has access to: {', '.join(models)}")
                     except Exception as e:
                         st.error(f"Failed to check models: {e}")
@@ -97,7 +97,6 @@ with st.sidebar:
                     os.environ["PINECONE_API_KEY"] = pinecone_api_key
                     st.write("⏳ Downloading / Loading local AI embeddings...")
                     
-                    # LAZY LOAD: Only load the heavy 400MB model when the user actually clicks this button!
                     embeddings = get_embeddings()
                     st.write("✅ Embeddings loaded successfully!")
                     
@@ -135,7 +134,6 @@ if not (api_key and pinecone_api_key and pinecone_index):
 
 os.environ["PINECONE_API_KEY"] = pinecone_api_key
 
-# Print history quickly
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
@@ -145,7 +143,6 @@ for msg in st.session_state.messages:
                     st.markdown(f"**Chunk {i+1} (Page {doc.metadata.get('page', '?')})**")
                     st.info(doc.page_content)
 
-# Handle new user input
 if prompt_text := st.chat_input("Ask a question about your documents..."):
     st.session_state.messages.append({"role": "user", "content": prompt_text})
     with st.chat_message("user"):
@@ -154,7 +151,6 @@ if prompt_text := st.chat_input("Ask a question about your documents..."):
     with st.chat_message("assistant"):
         with st.spinner(f"Analyzing with {llm_provider}..."):
             try:
-                # LAZY LOAD: Only load heavy models exactly when a question is asked!
                 embeddings = get_embeddings()
                 llm = get_llm(llm_provider, api_key, gemini_model)
                 
