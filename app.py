@@ -44,7 +44,7 @@ with st.sidebar:
         
         if llm_provider == "Google Gemini":
             api_key = st.text_input("Gemini API Key", type="password", value=os.getenv("GEMINI_API_KEY", ""))
-            model_name = "gemini-1.5-flash"
+            model_name = "gemini-pro"
         else:
             api_key = st.text_input("Groq API Key", type="password", value=os.getenv("GROQ_API_KEY", ""))
             model_name = "llama3-8b-8192"
@@ -177,3 +177,4 @@ Answer:""")
                 error_msg = f"An error occurred: {e}"
                 st.error(error_msg)
                 st.session_state.messages.append({"role": "assistant", "content": error_msg})
+
