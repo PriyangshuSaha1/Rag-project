@@ -15,11 +15,12 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_groq import ChatGroq
 from langchain_huggingface import HuggingFaceEmbeddings
 
+import google.generativeai as genai
+
 load_dotenv()
 
 st.set_page_config(page_title="RAG Intelligence", page_icon="🧠", layout="wide")
 
-# Hide the running indicator and dimming effect to make it feel more instantaneous
 st.markdown("""
 <style>
     .stApp { background-color: #0e1117; }
@@ -42,9 +43,9 @@ def get_embeddings():
     return HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
 
 @st.cache_resource(show_spinner=False)
-def get_llm(provider, api_key):
+def get_llm(provider, api_key, model_choice="gemini-1.5-flash"):
     if provider == "Google Gemini":
-        return ChatGoogleGenerativeAI(model="gemini-pro", google_api_key=api_key, temperature=0.3)
+        return ChatGoogleGenerativeAI(model=model_choice, google_api_key=api_key, temperature=0.3)
     else:
         return ChatGroq(model="llama3-8b-8192", groq_api_key=api_key, temperature=0.3)
 
@@ -53,12 +54,32 @@ with st.sidebar:
     st.header("⚙️ Configuration")
     
     with st.expander("🔑 API Credentials", expanded=True):
-        llm_provider = st.selectbox("AI Model Provider", ["Groq (Llama 3)", "Google Gemini"])
+        llm_provider = st.selectbox("AI Model Provider", ["Google Gemini", "Groq (Llama 3)"])
         
         if llm_provider == "Google Gemini":
             api_key = st.text_input("Gemini API Key", type="password", value=os.getenv("GEMINI_API_KEY", ""))
+            
+            # Allow user to pick which Gemini model to use manually in case of 404s
+            gemini_model = st.selectbox("Gemini Model Version", [
+                "gemini-1.5-flash", 
+                "gemini-1.5-pro", 
+                "gemini-1.0-pro",
+                "gemini-pro"
+            ])
+            
+            if st.button("🛠️ Debug: List My Allowed Models"):
+                if api_key:
+                    try:
+                        genai.configure(api_key=api_key)
+                        models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                        st.success(f"Your API Key has access to: {', '.join(models)}")
+                    except Exception as e:
+                        st.error(f"Failed to check models: {e}")
+                else:
+                    st.error("Please enter your Gemini API key first.")
         else:
             api_key = st.text_input("Groq API Key", type="password", value=os.getenv("GROQ_API_KEY", ""))
+            gemini_model = None
             
         pinecone_api_key = st.text_input("Pinecone API Key", type="password", value=os.getenv("PINECONE_API_KEY", ""))
         pinecone_index   = st.text_input("Pinecone Index Name", value=os.getenv("PINECONE_INDEX_NAME", ""))
@@ -75,7 +96,6 @@ with st.sidebar:
             with st.status("🚀 Starting Document Processing...", expanded=True) as status:
                 try:
                     os.environ["PINECONE_API_KEY"] = pinecone_api_key
-                    
                     st.write("⏳ Downloading / Loading local AI embeddings...")
                     embeddings = get_embeddings()
                     st.write("✅ Embeddings loaded successfully!")
@@ -116,7 +136,7 @@ os.environ["PINECONE_API_KEY"] = pinecone_api_key
 
 try:
     embeddings = get_embeddings()
-    llm = get_llm(llm_provider, api_key)
+    llm = get_llm(llm_provider, api_key, gemini_model)
 except Exception as e:
     st.error(f"Error initializing models: {e}")
     st.stop()
@@ -189,4 +209,3 @@ Answer:""")
                 error_msg = f"An error occurred: {e}"
                 st.error(error_msg)
                 st.session_state.messages.append({"role": "assistant", "content": error_msg})
-
