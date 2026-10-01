@@ -48,7 +48,7 @@ def get_llm(provider, api_key):
         try:
             # AUTO-DISCOVERY: Fetch the exactly allowed models for this specific API key to prevent 404s
             client = genai.Client(api_key=api_key)
-            allowed_models = [m.name for m in client.models.list() if 'generateContent' in m.supported_generation_methods]
+            allowed_models = [m.name for m in client.models.list() ]
             
             # Prefer 1.5 flash, then pro, then whatever is available
             best_model = None
@@ -206,3 +206,4 @@ Answer:""")
                 error_msg = f"An error occurred: {e}"
                 st.error(error_msg)
                 st.session_state.messages.append({"role": "assistant", "content": error_msg})
+
