@@ -43,42 +43,45 @@ def get_embeddings():
     return HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
 
 @st.cache_resource(show_spinner=False)
-def get_llm(provider, api_key, model_choice="gemini-1.5-flash"):
+def get_llm(provider, api_key):
     if provider == "Google Gemini":
-        return ChatGoogleGenerativeAI(model=model_choice, google_api_key=api_key, temperature=0.3)
+        try:
+            # AUTO-DISCOVERY: Fetch the exactly allowed models for this specific API key to prevent 404s
+            client = genai.Client(api_key=api_key)
+            allowed_models = [m.name for m in client.models.list() if 'generateContent' in m.supported_generation_methods]
+            
+            # Prefer 1.5 flash, then pro, then whatever is available
+            best_model = None
+            for pref in ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro", "gemini-pro"]:
+                if any(pref in m for m in allowed_models):
+                    best_model = [m for m in allowed_models if pref in m][0]
+                    break
+                    
+            if not best_model and allowed_models:
+                best_model = allowed_models[0]
+                
+            if not best_model:
+                raise ValueError("Your Google API Key does not have access to any text generation models.")
+                
+            # Remove 'models/' prefix if it exists because LangChain adds it automatically
+            best_model_name = best_model.replace("models/", "")
+            return ChatGoogleGenerativeAI(model=best_model_name, google_api_key=api_key, temperature=0.3), best_model_name
+        except Exception as e:
+            raise Exception(f"Google API Key verification failed: {e}")
     else:
-        return ChatGroq(model="llama3-8b-8192", groq_api_key=api_key, temperature=0.3)
+        return ChatGroq(model="llama3-8b-8192", groq_api_key=api_key, temperature=0.3), "llama3-8b-8192"
 
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/4233/4233830.png", width=60)
     st.header("⚙️ Configuration")
     
     with st.expander("🔑 API Credentials", expanded=True):
-        llm_provider = st.selectbox("AI Model Provider", ["Groq (Llama 3)", "Google Gemini"])
+        llm_provider = st.selectbox("AI Model Provider", ["Google Gemini", "Groq (Llama 3)"])
         
         if llm_provider == "Google Gemini":
             api_key = st.text_input("Gemini API Key", type="password", value=os.getenv("GEMINI_API_KEY", ""))
-            
-            gemini_model = st.selectbox("Gemini Model Version", [
-                "gemini-1.5-flash", 
-                "gemini-1.5-pro", 
-                "gemini-1.0-pro",
-                "gemini-pro"
-            ])
-            
-            if st.button("🛠️ Debug: List My Allowed Models"):
-                if api_key:
-                    try:
-                        client = genai.Client(api_key=api_key)
-                        models = [m.name for m in client.models.list()]
-                        st.success(f"Your API Key has access to: {', '.join(models)}")
-                    except Exception as e:
-                        st.error(f"Failed to check models: {e}")
-                else:
-                    st.error("Please enter your Gemini API key first.")
         else:
             api_key = st.text_input("Groq API Key", type="password", value=os.getenv("GROQ_API_KEY", ""))
-            gemini_model = None
             
         pinecone_api_key = st.text_input("Pinecone API Key", type="password", value=os.getenv("PINECONE_API_KEY", ""))
         pinecone_index   = st.text_input("Pinecone Index Name", value=os.getenv("PINECONE_INDEX_NAME", ""))
@@ -96,7 +99,6 @@ with st.sidebar:
                 try:
                     os.environ["PINECONE_API_KEY"] = pinecone_api_key
                     st.write("⏳ Downloading / Loading local AI embeddings...")
-                    
                     embeddings = get_embeddings()
                     st.write("✅ Embeddings loaded successfully!")
                     
@@ -149,10 +151,11 @@ if prompt_text := st.chat_input("Ask a question about your documents..."):
         st.markdown(prompt_text)
 
     with st.chat_message("assistant"):
-        with st.spinner(f"Analyzing with {llm_provider}..."):
+        with st.spinner(f"Analyzing..."):
             try:
                 embeddings = get_embeddings()
-                llm = get_llm(llm_provider, api_key, gemini_model)
+                # LAZY LOAD + AUTO DISCOVER MODEL
+                llm, actual_model_name = get_llm(llm_provider, api_key)
                 
                 vectorstore = PineconeVectorStore(index_name=pinecone_index, embedding=embeddings)
                 retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
@@ -186,6 +189,8 @@ Answer:""")
                 source_docs = retriever.invoke(prompt_text)
                 
                 st.markdown(answer)
+                st.caption(f"✨ Generated using {actual_model_name}")
+                
                 with st.expander("📑 View Source Context"):
                     for i, doc in enumerate(source_docs):
                         st.markdown(f"**Chunk {i+1} (Page {doc.metadata.get('page', '?')})**")
