@@ -54,12 +54,11 @@ with st.sidebar:
     st.header("⚙️ Configuration")
     
     with st.expander("🔑 API Credentials", expanded=True):
-        llm_provider = st.selectbox("AI Model Provider", ["Google Gemini", "Groq (Llama 3)"])
+        llm_provider = st.selectbox("AI Model Provider", ["Groq (Llama 3)", "Google Gemini"])
         
         if llm_provider == "Google Gemini":
             api_key = st.text_input("Gemini API Key", type="password", value=os.getenv("GEMINI_API_KEY", ""))
             
-            # Allow user to pick which Gemini model to use manually in case of 404s
             gemini_model = st.selectbox("Gemini Model Version", [
                 "gemini-1.5-flash", 
                 "gemini-1.5-pro", 
@@ -97,6 +96,8 @@ with st.sidebar:
                 try:
                     os.environ["PINECONE_API_KEY"] = pinecone_api_key
                     st.write("⏳ Downloading / Loading local AI embeddings...")
+                    
+                    # LAZY LOAD: Only load the heavy 400MB model when the user actually clicks this button!
                     embeddings = get_embeddings()
                     st.write("✅ Embeddings loaded successfully!")
                     
@@ -134,13 +135,6 @@ if not (api_key and pinecone_api_key and pinecone_index):
 
 os.environ["PINECONE_API_KEY"] = pinecone_api_key
 
-try:
-    embeddings = get_embeddings()
-    llm = get_llm(llm_provider, api_key, gemini_model)
-except Exception as e:
-    st.error(f"Error initializing models: {e}")
-    st.stop()
-
 # Print history quickly
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
@@ -153,15 +147,17 @@ for msg in st.session_state.messages:
 
 # Handle new user input
 if prompt_text := st.chat_input("Ask a question about your documents..."):
-    # Render user question immediately
     st.session_state.messages.append({"role": "user", "content": prompt_text})
     with st.chat_message("user"):
         st.markdown(prompt_text)
 
-    # Render assistant response with spinner
     with st.chat_message("assistant"):
         with st.spinner(f"Analyzing with {llm_provider}..."):
             try:
+                # LAZY LOAD: Only load heavy models exactly when a question is asked!
+                embeddings = get_embeddings()
+                llm = get_llm(llm_provider, api_key, gemini_model)
+                
                 vectorstore = PineconeVectorStore(index_name=pinecone_index, embedding=embeddings)
                 retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
 
