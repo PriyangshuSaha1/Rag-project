@@ -1,6 +1,7 @@
 ﻿import streamlit as st
 import os
 import tempfile
+import time
 from typing import List, Optional, Any
 from dotenv import load_dotenv
 
@@ -11,7 +12,6 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 
-# Use LangChain integrations
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_huggingface import HuggingFaceEmbeddings
 
@@ -52,28 +52,36 @@ with st.sidebar:
         if not (gemini_api_key and pinecone_api_key and pinecone_index):
             st.error("Please provide all credentials above.")
         elif uploaded_file is not None:
-            with st.spinner("Downloading local embeddings (this takes a moment the first time)..."):
+            
+            with st.status("🚀 Starting Document Processing...", expanded=True) as status:
                 try:
                     os.environ["PINECONE_API_KEY"] = pinecone_api_key
                     
-                    # USE LOCAL HUGGINGFACE EMBEDDINGS (Dimensions: 768 to match Pinecone)
+                    st.write("⏳ Downloading / Loading local AI embeddings...")
                     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
+                    st.write("✅ Embeddings loaded successfully!")
                     
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
                         tmp_file.write(uploaded_file.getvalue())
                         tmp_path = tmp_file.name
 
+                    st.write("⏳ Reading PDF and creating text chunks...")
                     loader = PyPDFLoader(tmp_path)
                     docs = loader.load()
 
                     splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
                     splits = splitter.split_documents(docs)
+                    st.write(f"✅ Document successfully split into {len(splits)} chunks!")
                     
+                    st.write("⏳ Generating vectors and uploading to Pinecone Database...")
                     PineconeVectorStore.from_documents(splits, embeddings, index_name=pinecone_index)
                     os.remove(tmp_path)
+                    st.write("✅ Vectors successfully stored in Pinecone!")
                     
-                    st.success(f"✅ Indexed {len(splits)} chunks successfully!")
+                    status.update(label="🎉 Document Processed & Indexed Successfully!", state="complete", expanded=False)
+                    
                 except Exception as e:
+                    status.update(label="❌ Error during processing", state="error", expanded=True)
                     st.error(f"Error: {e}")
         else:
             st.warning("Please upload a PDF first.")
@@ -88,7 +96,6 @@ if not (gemini_api_key and pinecone_api_key and pinecone_index):
 os.environ["PINECONE_API_KEY"] = pinecone_api_key
 
 try:
-    # USE LOCAL EMBEDDINGS
     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
     llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=gemini_api_key, temperature=0.3)
 except Exception as e:
