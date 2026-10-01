@@ -53,7 +53,7 @@ with st.sidebar:
     st.header("⚙️ Configuration")
     
     with st.expander("🔑 API Credentials", expanded=True):
-        llm_provider = st.selectbox("AI Model Provider", ["Google Gemini", "Groq (Llama 3)"])
+        llm_provider = st.selectbox("AI Model Provider", ["Groq (Llama 3)", "Google Gemini"])
         
         if llm_provider == "Google Gemini":
             api_key = st.text_input("Gemini API Key", type="password", value=os.getenv("GEMINI_API_KEY", ""))
@@ -189,3 +189,4 @@ Answer:""")
                 error_msg = f"An error occurred: {e}"
                 st.error(error_msg)
                 st.session_state.messages.append({"role": "assistant", "content": error_msg})
+
