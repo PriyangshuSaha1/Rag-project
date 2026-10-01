@@ -16,6 +16,7 @@ from langchain_groq import ChatGroq
 from langchain_huggingface import HuggingFaceEmbeddings
 
 from google import genai
+from groq import Groq
 
 load_dotenv()
 
@@ -46,13 +47,12 @@ def get_embeddings():
 def get_llm(provider, api_key):
     if provider == "Google Gemini":
         try:
-            # AUTO-DISCOVERY: Fetch the exactly allowed models for this specific API key to prevent 404s
+            # AUTO-DISCOVERY: Fetch allowed models
             client = genai.Client(api_key=api_key)
-            allowed_models = [m.name for m in client.models.list() ]
+            allowed_models = [m.name for m in client.models.list()]
             
-            # Prefer 1.5 flash, then pro, then whatever is available
             best_model = None
-            for pref in ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro", "gemini-pro"]:
+            for pref in ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash", "gemini-1.0-pro", "gemini-pro"]:
                 if any(pref in m for m in allowed_models):
                     best_model = [m for m in allowed_models if pref in m][0]
                     break
@@ -61,15 +61,37 @@ def get_llm(provider, api_key):
                 best_model = allowed_models[0]
                 
             if not best_model:
-                raise ValueError("Your Google API Key does not have access to any text generation models.")
+                raise ValueError("Your Google API Key does not have access to any models.")
                 
-            # Remove 'models/' prefix if it exists because LangChain adds it automatically
             best_model_name = best_model.replace("models/", "")
             return ChatGoogleGenerativeAI(model=best_model_name, google_api_key=api_key, temperature=0.3), best_model_name
         except Exception as e:
             raise Exception(f"Google API Key verification failed: {e}")
     else:
-        return ChatGroq(model="mixtral-8x7b-32768", groq_api_key=api_key, temperature=0.3), "mixtral-8x7b-32768"
+        try:
+            # GROQ AUTO-DISCOVERY: Fetch exactly what Groq currently supports!
+            client = Groq(api_key=api_key)
+            models = client.models.list().data
+            # Filter out whisper (audio) and get the first text model
+            text_models = [m.id for m in models if "whisper" not in m.id]
+            
+            if not text_models:
+                raise ValueError("Your Groq API Key has no text models available.")
+                
+            best_model_name = text_models[0]
+            
+            # Prefer a fast llama model if available
+            for pref in ["llama", "gemma", "mixtral"]:
+                for m in text_models:
+                    if pref in m:
+                        best_model_name = m
+                        break
+                if "llama" in best_model_name:
+                    break
+                    
+            return ChatGroq(model=best_model_name, groq_api_key=api_key, temperature=0.3), best_model_name
+        except Exception as e:
+            raise Exception(f"Groq API Key verification failed: {e}")
 
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/4233/4233830.png", width=60)
@@ -99,6 +121,7 @@ with st.sidebar:
                 try:
                     os.environ["PINECONE_API_KEY"] = pinecone_api_key
                     st.write("⏳ Downloading / Loading local AI embeddings...")
+                    
                     embeddings = get_embeddings()
                     st.write("✅ Embeddings loaded successfully!")
                     
@@ -154,7 +177,6 @@ if prompt_text := st.chat_input("Ask a question about your documents..."):
         with st.spinner(f"Analyzing..."):
             try:
                 embeddings = get_embeddings()
-                # LAZY LOAD + AUTO DISCOVER MODEL
                 llm, actual_model_name = get_llm(llm_provider, api_key)
                 
                 vectorstore = PineconeVectorStore(index_name=pinecone_index, embedding=embeddings)
@@ -206,6 +228,3 @@ Answer:""")
                 error_msg = f"An error occurred: {e}"
                 st.error(error_msg)
                 st.session_state.messages.append({"role": "assistant", "content": error_msg})
-
-
-
