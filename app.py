@@ -1,7 +1,6 @@
 ﻿import streamlit as st
 import os
 import tempfile
-import time
 from typing import List, Optional, Any
 from dotenv import load_dotenv
 
@@ -13,6 +12,7 @@ from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
 from langchain_huggingface import HuggingFaceEmbeddings
 
 load_dotenv()
@@ -30,7 +30,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<p class="main-title">🧠 RAG Intelligence Studio</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-title">Securely query your documents using Local Embeddings, Pinecone & Google Gemini AI</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-title">Securely query your documents using Local Embeddings & Pinecone</p>', unsafe_allow_html=True)
 
 if "messages" not in st.session_state:
     st.session_state.messages = [{"role": "assistant", "content": "Hello! I am ready to answer questions based on your indexed documents. What would you like to know?"}]
@@ -40,7 +40,15 @@ with st.sidebar:
     st.header("⚙️ Configuration")
     
     with st.expander("🔑 API Credentials", expanded=True):
-        gemini_api_key   = st.text_input("Gemini API Key", type="password", value=os.getenv("GEMINI_API_KEY", ""))
+        llm_provider = st.selectbox("AI Model Provider", ["Google Gemini", "Groq (Llama 3)"])
+        
+        if llm_provider == "Google Gemini":
+            api_key = st.text_input("Gemini API Key", type="password", value=os.getenv("GEMINI_API_KEY", ""))
+            model_name = "gemini-1.5-flash"
+        else:
+            api_key = st.text_input("Groq API Key", type="password", value=os.getenv("GROQ_API_KEY", ""))
+            model_name = "llama3-8b-8192"
+            
         pinecone_api_key = st.text_input("Pinecone API Key", type="password", value=os.getenv("PINECONE_API_KEY", ""))
         pinecone_index   = st.text_input("Pinecone Index Name", value=os.getenv("PINECONE_INDEX_NAME", ""))
 
@@ -49,7 +57,7 @@ with st.sidebar:
     uploaded_file = st.file_uploader("Upload PDF Document", type=["pdf"])
 
     if st.button("🚀 Process & Index Document", use_container_width=True):
-        if not (gemini_api_key and pinecone_api_key and pinecone_index):
+        if not (api_key and pinecone_api_key and pinecone_index):
             st.error("Please provide all credentials above.")
         elif uploaded_file is not None:
             
@@ -89,7 +97,7 @@ with st.sidebar:
     if st.button("🗑️ Clear Chat History", use_container_width=True):
         st.session_state.messages = [{"role": "assistant", "content": "History cleared. How can I help?"}]
 
-if not (gemini_api_key and pinecone_api_key and pinecone_index):
+if not (api_key and pinecone_api_key and pinecone_index):
     st.info("👈 Please enter your API credentials in the sidebar to start chatting.")
     st.stop()
 
@@ -97,7 +105,10 @@ os.environ["PINECONE_API_KEY"] = pinecone_api_key
 
 try:
     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
-    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=gemini_api_key, temperature=0.3)
+    if llm_provider == "Google Gemini":
+        llm = ChatGoogleGenerativeAI(model=model_name, google_api_key=api_key, temperature=0.3)
+    else:
+        llm = ChatGroq(model=model_name, groq_api_key=api_key, temperature=0.3)
 except Exception as e:
     st.error(f"Error initializing models: {e}")
     st.stop()
@@ -117,7 +128,7 @@ if prompt_text := st.chat_input("Ask a question about your documents..."):
         st.markdown(prompt_text)
 
     with st.chat_message("assistant"):
-        with st.spinner("Searching knowledge base..."):
+        with st.spinner(f"Analyzing with {llm_provider}..."):
             try:
                 vectorstore = PineconeVectorStore(index_name=pinecone_index, embedding=embeddings)
                 retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
