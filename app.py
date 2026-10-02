@@ -134,6 +134,16 @@ with st.sidebar:
                     splits = splitter.split_documents(docs)
                     st.write(f"✅ Document successfully split into {len(splits)} chunks!")
                     
+                                        st.write("⏳ Clearing old documents from the database...")
+                    try:
+                        from pinecone import Pinecone
+                        pc = Pinecone(api_key=pinecone_api_key)
+                        idx = pc.Index(pinecone_index)
+                        idx.delete(delete_all=True)
+                        st.write("✅ Database cleared!")
+                    except Exception as clear_err:
+                        st.write(f"⚠️ Note: {clear_err}")
+                        
                     st.write("⏳ Generating vectors and uploading to Pinecone Database...")
                     PineconeVectorStore.from_documents(splits, embeddings, index_name=pinecone_index)
                     os.remove(tmp_path)
@@ -231,3 +241,4 @@ Answer:""")
                 
                 st.error(error_msg)
                 st.session_state.messages.append({"role": "assistant", "content": error_msg})
+
