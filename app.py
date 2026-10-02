@@ -225,6 +225,14 @@ Answer:""")
                 })
 
             except Exception as e:
-                error_msg = f"An error occurred: {e}"
+                error_str = str(e)
+                if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                    error_msg = "🚨 **Google API Quota Exceeded (429)!**\n\nGoogle has temporarily blocked your Gemini API key because it has reached its free limit. \n\n👉 **To fix this instantly:** Go to the left sidebar, change the AI Model Provider to **Groq**, and paste your Groq API key. Groq is 100% free and will answer your question immediately!"
+                elif "404" in error_str or "not found" in error_str.lower():
+                    error_msg = "❌ **Model Not Found (404)!**\n\nGoogle's servers rejected this model. Please switch to Groq in the sidebar to bypass this."
+                else:
+                    error_msg = f"⚠️ **An error occurred:** {e}"
+                
                 st.error(error_msg)
                 st.session_state.messages.append({"role": "assistant", "content": error_msg})
+
