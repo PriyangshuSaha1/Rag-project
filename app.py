@@ -134,7 +134,7 @@ with st.sidebar:
                     splits = splitter.split_documents(docs)
                     st.write(f"✅ Document successfully split into {len(splits)} chunks!")
                     
-                                        st.write("⏳ Clearing old documents from the database...")
+                    st.write("⏳ Clearing old documents from the database...")
                     try:
                         from pinecone import Pinecone
                         pc = Pinecone(api_key=pinecone_api_key)
@@ -241,4 +241,3 @@ Answer:""")
                 
                 st.error(error_msg)
                 st.session_state.messages.append({"role": "assistant", "content": error_msg})
-
