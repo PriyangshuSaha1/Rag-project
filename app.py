@@ -89,7 +89,7 @@ def get_llm(provider, api_key):
                 if "llama" in best_model_name:
                     break
                     
-            return ChatGroq(model=best_model_name, groq_api_key=api_key, temperature=0.3), best_model_name
+            return ChatGroq(model=best_model_name, groq_api_key=api_key, temperature=0.3, max_tokens=1024), best_model_name
         except Exception as e:
             raise Exception(f"Groq API Key verification failed: {e}")
 
@@ -180,7 +180,7 @@ if prompt_text := st.chat_input("Ask a question about your documents..."):
                 llm, actual_model_name = get_llm(llm_provider, api_key)
                 
                 vectorstore = PineconeVectorStore(index_name=pinecone_index, embedding=embeddings)
-                retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
+                retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
 
                 prompt_template = ChatPromptTemplate.from_template("""
 You are a helpful AI assistant answering questions based on the provided documentation.
@@ -235,4 +235,5 @@ Answer:""")
                 
                 st.error(error_msg)
                 st.session_state.messages.append({"role": "assistant", "content": error_msg})
+
 
