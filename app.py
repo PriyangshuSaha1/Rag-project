@@ -47,7 +47,6 @@ def get_embeddings():
 def get_llm(provider, api_key):
     if provider == "Google Gemini":
         try:
-            # AUTO-DISCOVERY: Fetch allowed models
             client = genai.Client(api_key=api_key)
             allowed_models = [m.name for m in client.models.list()]
             
@@ -69,26 +68,26 @@ def get_llm(provider, api_key):
             raise Exception(f"Google API Key verification failed: {e}")
     else:
         try:
-            # GROQ AUTO-DISCOVERY: Fetch exactly what Groq currently supports!
             client = Groq(api_key=api_key)
             models = client.models.list().data
-            # Filter out whisper (audio) and get the first text model
-            text_models = [m.id for m in models if "whisper" not in m.id]
+            # CRITICAL: Filter out whisper and guard models which cannot generate text!
+            text_models = [m.id for m in models if "whisper" not in m.id and "guard" not in m.id]
             
             if not text_models:
-                raise ValueError("Your Groq API Key has no text models available.")
+                raise ValueError("Your Groq API Key has no usable text models available.")
                 
-            best_model_name = text_models[0]
+            best_model_name = text_models[-1]
             
-            # Prefer a fast llama model if available
-            for pref in ["llama", "gemma", "mixtral"]:
+            # Prefer standard generative models over specialized ones
+            for pref in ["qwen", "gpt", "llama", "mixtral", "gemma"]:
                 for m in text_models:
-                    if pref in m:
+                    if pref in m.lower():
                         best_model_name = m
                         break
-                if "llama" in best_model_name:
+                if pref in best_model_name.lower():
                     break
                     
+            # Use max_tokens=1024 to prevent 400 errors from context overflow on strict models
             return ChatGroq(model=best_model_name, groq_api_key=api_key, temperature=0.3, max_tokens=1024), best_model_name
         except Exception as e:
             raise Exception(f"Groq API Key verification failed: {e}")
@@ -98,7 +97,7 @@ with st.sidebar:
     st.header("⚙️ Configuration")
     
     with st.expander("🔑 API Credentials", expanded=True):
-        llm_provider = st.selectbox("AI Model Provider", ["Google Gemini", "Groq (Llama 3)"])
+        llm_provider = st.selectbox("AI Model Provider", ["Groq (Llama 3)", "Google Gemini"])
         
         if llm_provider == "Google Gemini":
             api_key = st.text_input("Gemini API Key", type="password", value=os.getenv("GEMINI_API_KEY", ""))
@@ -116,12 +115,10 @@ with st.sidebar:
         if not (api_key and pinecone_api_key and pinecone_index):
             st.error("Please provide all credentials above.")
         elif uploaded_file is not None:
-            
             with st.status("🚀 Starting Document Processing...", expanded=True) as status:
                 try:
                     os.environ["PINECONE_API_KEY"] = pinecone_api_key
                     st.write("⏳ Downloading / Loading local AI embeddings...")
-                    
                     embeddings = get_embeddings()
                     st.write("✅ Embeddings loaded successfully!")
                     
@@ -143,7 +140,6 @@ with st.sidebar:
                     st.write("✅ Vectors successfully stored in Pinecone!")
                     
                     status.update(label="🎉 Document Processed & Indexed Successfully!", state="complete", expanded=False)
-                    
                 except Exception as e:
                     status.update(label="❌ Error during processing", state="error", expanded=True)
                     st.error(f"Error: {e}")
@@ -235,5 +231,3 @@ Answer:""")
                 
                 st.error(error_msg)
                 st.session_state.messages.append({"role": "assistant", "content": error_msg})
-
-
