@@ -109,12 +109,12 @@ with st.sidebar:
 
     st.divider()
     st.header("📄 Knowledge Base")
-    uploaded_file = st.file_uploader("Upload PDF Document", type=["pdf"])
+    uploaded_files = st.file_uploader("Upload PDF Documents", type=["pdf"], accept_multiple_files=True)
 
-    if st.button("🚀 Process & Index Document", use_container_width=True):
+    if st.button("🚀 Process & Index Documents", use_container_width=True):
         if not (api_key and pinecone_api_key and pinecone_index):
             st.error("Please provide all credentials above.")
-        elif uploaded_file is not None:
+        elif uploaded_files:
             with st.status("🚀 Starting Document Processing...", expanded=True) as status:
                 try:
                     os.environ["PINECONE_API_KEY"] = pinecone_api_key
@@ -122,17 +122,20 @@ with st.sidebar:
                     embeddings = get_embeddings()
                     st.write("✅ Embeddings loaded successfully!")
                     
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-                        tmp_file.write(uploaded_file.getvalue())
-                        tmp_path = tmp_file.name
-
-                    st.write("⏳ Reading PDF and creating text chunks...")
-                    loader = PyPDFLoader(tmp_path)
-                    docs = loader.load()
+                    st.write(f"⏳ Reading {len(uploaded_files)} PDF(s) and creating text chunks...")
+                    all_docs = []
+                    for file in uploaded_files:
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+                            tmp_file.write(file.getvalue())
+                            tmp_path = tmp_file.name
+                        
+                        loader = PyPDFLoader(tmp_path)
+                        all_docs.extend(loader.load())
+                        os.remove(tmp_path)
 
                     splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-                    splits = splitter.split_documents(docs)
-                    st.write(f"✅ Document successfully split into {len(splits)} chunks!")
+                    splits = splitter.split_documents(all_docs)
+                    st.write(f"✅ Documents successfully split into {len(splits)} chunks!")
                     
                     st.write("⏳ Clearing old documents from the database...")
                     try:
@@ -146,15 +149,14 @@ with st.sidebar:
                         
                     st.write("⏳ Generating vectors and uploading to Pinecone Database...")
                     PineconeVectorStore.from_documents(splits, embeddings, index_name=pinecone_index)
-                    os.remove(tmp_path)
                     st.write("✅ Vectors successfully stored in Pinecone!")
                     
-                    status.update(label="🎉 Document Processed & Indexed Successfully!", state="complete", expanded=False)
+                    status.update(label="🎉 Documents Processed & Indexed Successfully!", state="complete", expanded=False)
                 except Exception as e:
                     status.update(label="❌ Error during processing", state="error", expanded=True)
                     st.error(f"Error: {e}")
         else:
-            st.warning("Please upload a PDF first.")
+            st.warning("Please upload at least one PDF first.")
             
     if st.button("🗑️ Clear Chat History", use_container_width=True):
         st.session_state.messages = [{"role": "assistant", "content": "History cleared. How can I help?"}]
@@ -221,7 +223,10 @@ Answer:""")
                 
                 with st.expander("📑 View Source Context"):
                     for i, doc in enumerate(source_docs):
-                        st.markdown(f"**Chunk {i+1} (Page {doc.metadata.get('page', '?')})**")
+                        # Extract filename if available
+                        source_file = doc.metadata.get('source', 'Unknown File')
+                        source_name = os.path.basename(source_file) if source_file else 'Unknown'
+                        st.markdown(f"**{source_name} - Chunk {i+1} (Page {doc.metadata.get('page', '?')})**")
                         st.info(doc.page_content)
                         
                 st.session_state.messages.append({
